@@ -10,12 +10,23 @@
 	* [Thread Objects](#thread-objects)
 	* [Synchronization](#synchronization)
 	* [Liveness](#liveness)
+	* [Guarded Blocks](#guarded-blocks)
+	* [Immutable Objects](#immutable-objects)
+	* [High Level Concurrency Objects](#high-level-concurrency-objects)
 * [Singleton](#singleton)
 
 
 
 
 ## Concurrency
+
+##### Source(s) and further reading
+
+* [Concurrent Programming in Java: Design Principles and Pattern (2nd Edition)](https://www.amazon.com/Concurrent-Programming-Java-Principles-Patterns/dp/0201695812)
+* [Java Concurrency in Practice by Brian Goetz, Tim Peierls, Joshua Bloch, Joseph Bowbeer, David Holmes, and Doug Lea](https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=2&cad=rja&uact=8&ved=0ahUKEwjAg9Ds59PTAhWmrFQKHRGTAOkQFggtMAE&url=http%3A%2F%2Fwww.periodicooficial.oaxaca.gob.mx%2Ffiles%2F2011%2F05%2FEXT02-2011-05-19.pdf&usg=AFQjCNGn9qdZY0QRvut6Dods_nkCOlaXNg&sig2=S_pl29uwSnaCiU7zONkeeg)
+* [Effective Java Programming Language Guide (2nd Edition) by Joshua Bloch](https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=2&cad=rja&uact=8&ved=0ahUKEwiSuoP759PTAhULrlQKHf6bDOUQFggtMAE&url=https%3A%2F%2Fwww.amazon.com%2FEffective-Java-Programming-Language-Guide%2Fdp%2F0201310058&usg=AFQjCNEtMBeRfJEKsHiwT9kE9yzWZ0MtUQ&sig2=dOnTqFm0hmpjhCHvXxzs4A)
+* [Concurrency: State Models & Java Programs (2nd Edition), by Jeff Magee and Jeff Kramer](https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwjHgYeL6NPTAhXBsVQKHdczD24QFggjMAA&url=https%3A%2F%2Fwww.amazon.com%2FConcurrency-State-Models-Java-Programs%2Fdp%2F0470093552&usg=AFQjCNESeQv2m8XFTAUtk_jm9VXhfbNL8w&sig2=Qo8DSBXXs-twY7x9J0zaYQ)
+* [Java Concurrent Animated](http://sourceforge.net/projects/javaconcurrenta/)
 
 ### Processes and Threads
 
@@ -226,7 +237,7 @@ public class Deadlock {
         }
         public synchronized void bow(Friend bower) {
             System.out.format("%s: %s"
-                + "  has bowed to me!%n", 
+                + "  has bowed to me!%n",
                 this.name, bower.getName());
             bower.bowBack(this);
         }
@@ -259,6 +270,341 @@ public class Deadlock {
 
 * [Deadlock](http://docs.oracle.com/javase/tutorial/essential/concurrency/deadlock.html)
 * [Starvation and Livelock](http://docs.oracle.com/javase/tutorial/essential/concurrency/starvelive.html)
+
+### Guarded Blocks
+
+Threads often have to coordinate their actions. The most common coordination idiom is the guarded block. Such a block begins by polling a condition that must be true before the block can proceed. There are a number of steps to follow in order to do this correctly.
+
+Suppose, for example guardedJoy is a method that must not proceed until a shared variable joy has been set by another thread. Such a method could, in theory, simply loop until the condition is satisfied, but that loop is wasteful, since it executes continuously while waiting.
+
+```java
+public void guardedJoy() {
+    // Simple loop guard. Wastes
+    // processor time. Don't do this!
+    while(!joy) {}
+    System.out.println("Joy has been achieved!");
+}
+```
+
+A more efficient guard invokes Object.wait to suspend the current thread. The invocation of wait does not return until another thread has issued a notification that some special event may have occurred — though not necessarily the event this thread is waiting for:
+
+```java
+public synchronized void guardedJoy() {
+    // This guard only loops once for each special event, which may not
+    // be the event we're waiting for.
+    while(!joy) {
+        try {
+            wait();
+        } catch (InterruptedException e) {}
+    }
+    System.out.println("Joy and efficiency have been achieved!");
+}
+```
+
+When wait is invoked, the thread releases the lock and suspends execution. At some future time, another thread will acquire the same lock and invoke Object.notifyAll, informing all threads waiting on that lock that something important has happened:
+
+```java
+public synchronized notifyJoy() {
+    joy = true;
+    notifyAll();
+}
+```
+
+##### Source(s) and further reading
+
+* [Guarded Blocks](http://docs.oracle.com/javase/tutorial/essential/concurrency/guardmeth.html)
+
+### Immutable Objects
+
+An object is considered immutable if its state cannot change after it is constructed.
+
+ SynchronizedRGB, defines objects that represent colors. Each object represents the color as three integers that stand for primary color values and a string that gives the name of the color.
+```java
+public class SynchronizedRGB {
+
+    // Values must be between 0 and 255.
+    private int red;
+    private int green;
+    private int blue;
+    private String name;
+
+    private void check(int red,
+                       int green,
+                       int blue) {
+        if (red < 0 || red > 255
+            || green < 0 || green > 255
+            || blue < 0 || blue > 255) {
+            throw new IllegalArgumentException();
+        }
+    }
+
+    public SynchronizedRGB(int red,
+                           int green,
+                           int blue,
+                           String name) {
+        check(red, green, blue);
+        this.red = red;
+        this.green = green;
+        this.blue = blue;
+        this.name = name;
+    }
+
+    public void set(int red,
+                    int green,
+                    int blue,
+                    String name) {
+        check(red, green, blue);
+        synchronized (this) {
+            this.red = red;
+            this.green = green;
+            this.blue = blue;
+            this.name = name;
+        }
+    }
+
+    public synchronized int getRGB() {
+        return ((red << 16) | (green << 8) | blue);
+    }
+
+    public synchronized String getName() {
+        return name;
+    }
+
+    public synchronized void invert() {
+        red = 255 - red;
+        green = 255 - green;
+        blue = 255 - blue;
+        name = "Inverse of " + name;
+    }
+}
+```
+SynchronizedRGB must be used carefully to avoid being seen in an inconsistent state. If another thread invokes color.set after Statement 1 but before Statement 2, the value of myColorInt won't match the value of myColorName. So the two statements must be bound together
+
+```java
+synchronized (color) {
+    int myColorInt = color.getRGB();      //Statement 1
+    String myColorName = color.getName(); //Statement 2
+}
+```
+
+A Strategy for Defining Immutable Objects
+
+* Don't provide "setter" methods — methods that modify fields or objects referred to by fields.
+* Make all fields final and private.
+* Don't allow subclasses to override methods. The simplest way to do this is to declare the class as final. A more sophisticated approach is to make the constructor private and construct instances in factory methods.
+* If the instance fields include references to mutable objects, don't allow those objects to be changed:
+	* Don't provide methods that modify the mutable objects.
+	* Don't share references to the mutable objects. Never store references to external, mutable objects passed to the constructor; if necessary, create copies, and store references to the copies. Similarly, create copies of your internal mutable objects when necessary to avoid returning the originals in your methods.
+
+```java
+final public class ImmutableRGB {
+
+    // Values must be between 0 and 255.
+    final private int red;
+    final private int green;
+    final private int blue;
+    final private String name;
+
+    private void check(int red,
+                       int green,
+                       int blue) {
+        if (red < 0 || red > 255
+            || green < 0 || green > 255
+            || blue < 0 || blue > 255) {
+            throw new IllegalArgumentException();
+        }
+    }
+
+    public ImmutableRGB(int red,
+                        int green,
+                        int blue,
+                        String name) {
+        check(red, green, blue);
+        this.red = red;
+        this.green = green;
+        this.blue = blue;
+        this.name = name;
+    }
+
+
+    public int getRGB() {
+        return ((red << 16) | (green << 8) | blue);
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public ImmutableRGB invert() {
+        return new ImmutableRGB(255 - red,
+                       255 - green,
+                       255 - blue,
+                       "Inverse of " + name);
+    }
+}
+```
+##### Source(s) and further reading
+
+* [Immutable Objects](http://docs.oracle.com/javase/tutorial/essential/concurrency/immutable.html)
+
+
+### High Level Concurrency Objects
+
+**Lock Objects**, to solve the deadlock problem we saw in [Liveness](#liveness).
+
+```java
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.Random;
+
+public class Safelock {
+    static class Friend {
+        private final String name;
+        private final Lock lock = new ReentrantLock();
+
+        public Friend(String name) {
+            this.name = name;
+        }
+
+        public String getName() {
+            return this.name;
+        }
+
+        public boolean impendingBow(Friend bower) {
+            Boolean myLock = false;
+            Boolean yourLock = false;
+            try {
+                myLock = lock.tryLock();
+                yourLock = bower.lock.tryLock();
+            } finally {
+                if (! (myLock && yourLock)) {
+                    if (myLock) {
+                        lock.unlock();
+                    }
+                    if (yourLock) {
+                        bower.lock.unlock();
+                    }
+                }
+            }
+            return myLock && yourLock;
+        }
+
+        public void bow(Friend bower) {
+            if (impendingBow(bower)) {
+                try {
+                    System.out.format("%s: %s has"
+                        + " bowed to me!%n",
+                        this.name, bower.getName());
+                    bower.bowBack(this);
+                } finally {
+                    lock.unlock();
+                    bower.lock.unlock();
+                }
+            } else {
+                System.out.format("%s: %s started"
+                    + " to bow to me, but saw that"
+                    + " I was already bowing to"
+                    + " him.%n",
+                    this.name, bower.getName());
+            }
+        }
+
+        public void bowBack(Friend bower) {
+            System.out.format("%s: %s has" +
+                " bowed back to me!%n",
+                this.name, bower.getName());
+        }
+    }
+
+    static class BowLoop implements Runnable {
+        private Friend bower;
+        private Friend bowee;
+
+        public BowLoop(Friend bower, Friend bowee) {
+            this.bower = bower;
+            this.bowee = bowee;
+        }
+
+        public void run() {
+            Random random = new Random();
+            for (;;) {
+                try {
+                    Thread.sleep(random.nextInt(10));
+                } catch (InterruptedException e) {}
+                bowee.bow(bower);
+            }
+        }
+    }
+
+
+    public static void main(String[] args) {
+        final Friend alphonse =
+            new Friend("Alphonse");
+        final Friend gaston =
+            new Friend("Gaston");
+        new Thread(new BowLoop(alphonse, gaston)).start();
+        new Thread(new BowLoop(gaston, alphonse)).start();
+    }
+}
+```
+Multiple lock object implementations are available in the standard JDK
+
+* **ReentrantLock**, A reentrant mutual exclusion Lock with the same basic behavior and semantics as the implicit monitor lock accessed using synchronized methods and statements, but with extended capabilities.
+* **ReadWriteLock**, The interface ReadWriteLock specifies another type of lock maintaining a pair of locks for read and write access. The idea behind read-write locks is that it's usually safe to read mutable variables concurrently as long as nobody is writing to this variable.
+* **StampedLock**, Java 8 ships with a new kind of lock called StampedLock which also support read and write locks just like in the example above. In contrast to ReadWriteLock the locking methods of a StampedLock return a stamp represented by a long value.
+
+**Executors Interfaces**, The java.util.concurrent package defines three executor interfaces:
+
+* **Executor**, a simple interface that supports launching new tasks.
+* **ExecutorService**, a subinterface of Executor, which adds features that help manage the lifecycle, both of the individual tasks and of the executor itself.
+* **ScheduledExecutorService**, a subinterface of ExecutorService, supports future and/or periodic execution of tasks.
+
+**Thread Pools**, Most of the executor implementations in java.util.concurrent use thread pools, which consist of worker threads.
+
+* **newFixedThreadPool**, Creates a thread pool that reuses a fixed number of threads operating off a shared unbounded queue. At any point, at most nThreads threads will be active processing tasks. If additional tasks are submitted when all threads are active, they will wait in the queue until a thread is available. If any thread terminates due to a failure during execution prior to shutdown, a new one will take its place if needed to execute subsequent tasks. The threads in the pool will exist until it is explicitly shutdown.
+* **newCachedThreadPool**, Creates a thread pool that creates new threads as needed, but will reuse previously constructed threads when they are available. These pools will typically improve the performance of programs that execute many short-lived asynchronous tasks. Calls to execute will reuse previously constructed threads if available. If no existing thread is available, a new thread will be created and added to the pool. Threads that have not been used for sixty seconds are terminated and removed from the cache. Thus, a pool that remains idle for long enough will not consume any resources. Note that pools with similar properties but different details (for example, timeout parameters) may be created using ThreadPoolExecutor constructors.
+
+**Fork/Join**, an implementation of the ExecutorService interface that helps you take advantage of multiple processors. It is designed for work that can be broken into smaller pieces recursively.
+
+**Concurrent Collections**, The java.util.concurrent package includes a number of additions to the Java Collections Framework. These are most easily categorized by the collection interfaces provided:
+
+* **BlockingQueue** defines a first-in-first-out data structure that blocks or times out when you attempt to add to a full queue, or retrieve from an empty queue.
+* **ConcurrentMap** is a subinterface of java.util.Map that defines useful atomic operations. These operations remove or replace a key-value pair only if the key is present, or add a key-value pair only if the key is absent. Making these operations atomic helps avoid synchronization. The standard general-purpose implementation of ConcurrentMap is ConcurrentHashMap, which is a concurrent analog of HashMap.
+* **ConcurrentNavigableMap** is a subinterface of ConcurrentMap that supports approximate matches. The standard general-purpose implementation of ConcurrentNavigableMap is ConcurrentSkipListMap, which is a concurrent analog of TreeMap.
+
+**Atomic Variables**
+
+```java
+import java.util.concurrent.atomic.AtomicInteger;
+
+class AtomicCounter {
+    private AtomicInteger c = new AtomicInteger(0);
+
+    public void increment() {
+        c.incrementAndGet();
+    }
+
+    public void decrement() {
+        c.decrementAndGet();
+    }
+
+    public int value() {
+        return c.get();
+    }
+
+}
+```
+**Concurrent Random Numbers**, For concurrent access, using ThreadLocalRandom instead of Math.random() results in less contention and, ultimately, better performance.
+```java
+int r = ThreadLocalRandom.current() .nextInt(4, 77);
+```
+
+
+##### Source(s) and further reading
+
+* [High Level Concurrency Objects](http://docs.oracle.com/javase/tutorial/essential/concurrency/highlevel.html)
+* [Java newCachedThreadPool() versus newFixedThreadPool](http://stackoverflow.com/questions/949355/java-newcachedthreadpool-versus-newfixedthreadpool)
+
 
 
 ## Singleton
